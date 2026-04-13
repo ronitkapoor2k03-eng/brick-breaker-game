@@ -1,79 +1,34 @@
 import streamlit as st
-import random
-
-# Initialize game state in session_state
-if 'game_started' not in st.session_state:
-    st.session_state.game_started = False
-    st.session_state.score = 0
-    st.session_state.lives = 3
-    st.session_state.paddle_x = 350
-    st.session_state.ball_x = 400
-    st.session_state.ball_y = 500
-    st.session_state.ball_dx = 3
-    st.session_state.ball_dy = -3
-    # Create bricks (5 rows x 8 columns)
-    st.session_state.bricks = [[True for _ in range(8)] for _ in range(5)]
 
 st.set_page_config(page_title="Brick Breaker Game", layout="wide")
-st.title("🧱 Brick Breaker")
 
-# Display score and lives
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Score", st.session_state.score)
-with col2:
-    st.metric("Lives", st.session_state.lives)
-with col3:
-    if st.button("New Game"):
-        st.session_state.game_started = False
-        st.session_state.score = 0
-        st.session_state.lives = 3
-        st.session_state.paddle_x = 350
-        st.session_state.ball_x = 400
-        st.session_state.ball_y = 500
-        st.session_state.bricks = [[True for _ in range(8)] for _ in range(5)]
-        st.rerun()
+st.title("🧱 BRICK BREAKER - Arcade Classic")
+st.markdown("*Use **LEFT** and **RIGHT** arrow keys to control the paddle*")
 
-# Game controls
-if not st.session_state.game_started:
-    if st.button("Start Game 🎮"):
-        st.session_state.game_started = True
-        st.rerun()
-else:
-    # Paddle controls
-    col_left, col_right = st.columns(2)
-    with col_left:
-        if st.button("⬅️ Move Left"):
-            st.session_state.paddle_x = max(0, st.session_state.paddle_x - 50)
-    with col_right:
-        if st.button("➡️ Move Right"):
-            st.session_state.paddle_x = min(700, st.session_state.paddle_x + 50)
+# The complete working game HTML
+game_html = """
+<div style="display: flex; justify-content: center; margin: 20px 0;">
+    <canvas id="gameCanvas" width="800" height="600" style="border: 3px solid white; border-radius: 10px; background: black; box-shadow: 0 10px 30px rgba(0,0,0,0.3);"></canvas>
+</div>
 
-# Game visualization using HTML/CSS canvas
-game_html = f"""
-<style>
-    canvas {{
-        border: 2px solid #333;
-        background: #111;
-        display: block;
-        margin: 0 auto;
-    }}
-</style>
-<canvas id="gameCanvas" width="800" height="600"></canvas>
 <script>
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     
+    let score = 0;
+    let lives = 3;
     let gameRunning = true;
-    let score = {st.session_state.score};
-    let lives = {st.session_state.lives};
-    let paddleX = {st.session_state.paddle_x};
-    let ballX = {st.session_state.ball_x};
-    let ballY = {st.session_state.ball_y};
-    let ballDX = {st.session_state.ball_dx};
-    let ballDY = {st.session_state.ball_dy};
     
-    // Brick setup
+    const paddleWidth = 100;
+    const paddleHeight = 12;
+    let paddleX = (canvas.width - paddleWidth) / 2;
+    
+    const ballRadius = 8;
+    let ballX = canvas.width / 2;
+    let ballY = canvas.height - 50;
+    let ballDX = 3;
+    let ballDY = -3;
+    
     const brickRowCount = 5;
     const brickColumnCount = 8;
     const brickWidth = 75;
@@ -82,154 +37,161 @@ game_html = f"""
     const brickOffsetTop = 60;
     const brickOffsetLeft = 30;
     
-    let bricks = {st.session_state.bricks};
-    
-    const paddleWidth = 100;
-    const paddleHeight = 12;
-    const ballRadius = 8;
-    
-    document.addEventListener('keydown', keyDownHandler);
-    document.addEventListener('keyup', keyUpHandler);
+    let bricks = [];
+    for(let c = 0; c < brickColumnCount; c++) {
+        bricks[c] = [];
+        for(let r = 0; r < brickRowCount; r++) {
+            bricks[c][r] = { x: 0, y: 0, status: 1 };
+        }
+    }
     
     let rightPressed = false;
     let leftPressed = false;
     
-    function keyDownHandler(e) {{
-        if(e.key == 'Right' || e.key == 'ArrowRight') {{
-            rightPressed = true;
-        }}
-        else if(e.key == 'Left' || e.key == 'ArrowLeft') {{
-            leftPressed = true;
-        }}
-    }}
+    document.addEventListener('keydown', (e) => {
+        if(e.key === 'ArrowRight') rightPressed = true;
+        if(e.key === 'ArrowLeft') leftPressed = true;
+    });
     
-    function keyUpHandler(e) {{
-        if(e.key == 'Right' || e.key == 'ArrowRight') {{
-            rightPressed = false;
-        }}
-        else if(e.key == 'Left' || e.key == 'ArrowLeft') {{
-            leftPressed = false;
-        }}
-    }}
+    document.addEventListener('keyup', (e) => {
+        if(e.key === 'ArrowRight') rightPressed = false;
+        if(e.key === 'ArrowLeft') leftPressed = false;
+    });
     
-    function collisionDetection() {{
-        for(let c=0; c<brickColumnCount; c++) {{
-            for(let r=0; r<brickRowCount; r++) {{
-                let b = bricks[r][c];
-                if(b) {{
-                    if(ballX > c*(brickWidth+brickPadding)+brickOffsetLeft && 
-                       ballX < c*(brickWidth+brickPadding)+brickOffsetLeft+brickWidth && 
-                       ballY > r*(brickHeight+brickPadding)+brickOffsetTop && 
-                       ballY < r*(brickHeight+brickPadding)+brickOffsetTop+brickHeight) {{
+    function collisionDetection() {
+        for(let c = 0; c < brickColumnCount; c++) {
+            for(let r = 0; r < brickRowCount; r++) {
+                let b = bricks[c][r];
+                if(b.status === 1) {
+                    if(ballX > b.x && ballX < b.x + brickWidth && ballY > b.y && ballY < b.y + brickHeight) {
                         ballDY = -ballDY;
-                        bricks[r][c] = false;
+                        b.status = 0;
                         score++;
-                        if(score == brickRowCount*brickColumnCount) {{
-                            alert("YOU WIN! Congratulations!");
-                            document.location.reload();
-                        }}
-                    }}
-                }}
-            }}
-        }}
-    }}
+                        if(score === brickRowCount * brickColumnCount) {
+                            alert("🎉 YOU WIN! 🎉\\nFinal Score: " + score);
+                            resetGame();
+                        }
+                    }
+                }
+            }
+        }
+    }
     
-    function draw() {{
+    function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         // Draw bricks
-        for(let c=0; c<brickColumnCount; c++) {{
-            for(let r=0; r<brickRowCount; r++) {{
-                if(bricks[r][c]) {{
-                    ctx.fillStyle = '#FF5722';
-                    ctx.fillRect(c*(brickWidth+brickPadding)+brickOffsetLeft, 
-                                r*(brickHeight+brickPadding)+brickOffsetTop, 
-                                brickWidth, brickHeight);
+        for(let c = 0; c < brickColumnCount; c++) {
+            for(let r = 0; r < brickRowCount; r++) {
+                if(bricks[c][r].status === 1) {
+                    const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+                    const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+                    bricks[c][r].x = brickX;
+                    bricks[c][r].y = brickY;
+                    
+                    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'];
+                    ctx.fillStyle = colors[r % colors.length];
+                    ctx.fillRect(brickX, brickY, brickWidth, brickHeight);
                     ctx.strokeStyle = '#333';
-                    ctx.strokeRect(c*(brickWidth+brickPadding)+brickOffsetLeft, 
-                                  r*(brickHeight+brickPadding)+brickOffsetTop, 
-                                  brickWidth, brickHeight);
-                }}
-            }}
-        }}
+                    ctx.strokeRect(brickX, brickY, brickWidth, brickHeight);
+                }
+            }
+        }
         
         // Draw paddle
-        ctx.fillStyle = '#4CAF50';
-        ctx.fillRect(paddleX, canvas.height-paddleHeight, paddleWidth, paddleHeight);
+        ctx.fillStyle = '#00FF00';
+        ctx.fillRect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight);
         
         // Draw ball
         ctx.fillStyle = '#FFEB3B';
         ctx.beginPath();
-        ctx.arc(ballX, ballY, ballRadius, 0, Math.PI*2);
+        ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.closePath();
         
-        // Score and lives display
+        // Draw score and lives
         ctx.fillStyle = 'white';
-        ctx.font = '16px Arial';
-        ctx.fillText("Score: " + score, 8, 20);
-        ctx.fillText("Lives: " + lives, canvas.width-65, 20);
-    }}
+        ctx.font = 'bold 20px Arial';
+        ctx.fillText('Score: ' + score, 10, 30);
+        ctx.fillText('Lives: ' + lives, canvas.width - 100, 30);
+    }
     
-    function update() {{
+    function update() {
         if(!gameRunning) return;
         
-        // Paddle movement
-        if(rightPressed && paddleX < canvas.width-paddleWidth) {{
-            paddleX += 7;
-        }}
-        else if(leftPressed && paddleX > 0) {{
-            paddleX -= 7;
-        }}
+        if(rightPressed && paddleX < canvas.width - paddleWidth) paddleX += 7;
+        if(leftPressed && paddleX > 0) paddleX -= 7;
         
-        // Ball movement
         ballX += ballDX;
         ballY += ballDY;
         
-        // Wall collisions
-        if(ballX + ballRadius > canvas.width || ballX - ballRadius < 0) {{
-            ballDX = -ballDX;
-        }}
-        if(ballY - ballRadius < 0) {{
-            ballDY = -ballDY;
-        }}
+        if(ballX + ballRadius > canvas.width || ballX - ballRadius < 0) ballDX = -ballDX;
+        if(ballY - ballRadius < 0) ballDY = -ballDY;
         
-        // Paddle collision
-        if(ballY + ballRadius > canvas.height-paddleHeight && 
-           ballX > paddleX && ballX < paddleX + paddleWidth) {{
+        if(ballY + ballRadius > canvas.height - paddleHeight && 
+           ballX > paddleX && ballX < paddleX + paddleWidth) {
+            let hitPos = (ballX - paddleX) / paddleWidth;
+            ballDX = (hitPos - 0.5) * 8;
             ballDY = -ballDY;
-        }}
+        }
         
-        // Bottom wall (lose life)
-        if(ballY + ballRadius > canvas.height) {{
+        if(ballY + ballRadius > canvas.height) {
             lives--;
-            if(lives == 0) {{
-                alert("GAME OVER! Final Score: " + score);
-                document.location.reload();
-            }} else {{
-                ballX = canvas.width/2;
-                ballY = canvas.height-30;
+            if(lives === 0) {
+                gameRunning = false;
+                alert("💀 GAME OVER! 💀\\nFinal Score: " + score);
+                resetGame();
+            } else {
+                ballX = canvas.width / 2;
+                ballY = canvas.height - 50;
                 ballDX = 3;
                 ballDY = -3;
-                paddleX = (canvas.width-paddleWidth)/2;
-            }}
-        }}
+                paddleX = (canvas.width - paddleWidth) / 2;
+            }
+        }
         
         collisionDetection();
         draw();
         requestAnimationFrame(update);
-    }}
+    }
+    
+    function resetGame() {
+        score = 0;
+        lives = 3;
+        gameRunning = true;
+        paddleX = (canvas.width - paddleWidth) / 2;
+        ballX = canvas.width / 2;
+        ballY = canvas.height - 50;
+        ballDX = 3;
+        ballDY = -3;
+        
+        for(let c = 0; c < brickColumnCount; c++) {
+            for(let r = 0; r < brickRowCount; r++) {
+                bricks[c][r].status = 1;
+            }
+        }
+    }
     
     update();
 </script>
+
+<div style="display: flex; justify-content: center; gap: 40px; margin-top: 20px;">
+    <div style="background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 10px;">
+        <span style="color: white;">🏆 Score: </span>
+        <span style="color: yellow; font-size: 24px; font-weight: bold;" id="scoreDisplay">0</span>
+    </div>
+    <div style="background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 10px;">
+        <span style="color: white;">❤️ Lives: </span>
+        <span style="color: red; font-size: 24px; font-weight: bold;" id="livesDisplay">3</span>
+    </div>
+</div>
 """
 
-st.components.v1.html(game_html, height=650, width=820)
+st.components.v1.html(game_html, height=700, width=850)
 
-st.markdown("""
-### 🎮 How to Play:
-- Use **LEFT** and **RIGHT** arrow keys to move the paddle
-- Break all the orange bricks to win!
-- Don't let the ball hit the bottom—you have 3 lives
-- Green paddle + yellow ball = classic arcade fun!
-""")
+with st.expander("🎮 How to Play"):
+    st.markdown("""
+    - **Left Arrow** - Move paddle left
+    - **Right Arrow** - Move paddle right
+    - Break all colorful bricks to win!
+    - You have 3 lives - don't let the ball fall!
+    """)
